@@ -1,0 +1,4 @@
+dist/
+MacToolsBin
+*.bak
+.DS_Store
