@@ -2,7 +2,7 @@
 # Builds a universal (Apple Silicon + Intel) MacTools.app and MacTools.zip in ./dist
 set -euo pipefail
 cd "$(dirname "$0")"
-SRC=(Core.swift DevTools.swift UtilTools.swift main.swift)
+SRC=(Core.swift DevTools.swift UtilTools.swift Dashboard.swift main.swift)
 APP=dist/MacTools.app
 VERSION=${1:-1.0.0}
 

@@ -84,67 +84,57 @@ let sections: [(String, [Tool])] = [
 
 struct RootView: View {
     @State private var tool: Tool?
+    @State private var tab = AppTab.home
+
     var body: some View {
         VStack(spacing: 0) {
             if let tool {
                 ToolPage(tool: tool) { withAnimation(.snappy) { self.tool = nil } }
                     .transition(.move(edge: .leading).combined(with: .opacity))
             } else {
-                HomeView { t in withAnimation(.snappy) { tool = t } }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                ZStack {
+                    if tab == .home {
+                        DashboardView { t in withAnimation(.snappy) { tool = t } }
+                            .transition(.opacity)
+                    } else {
+                        HomeView { t in withAnimation(.snappy) { tool = t } }
+                            .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                TabBar(tab: $tab)
             }
         }
         .frame(width: 420, height: 540)
+        .background(Color(nsColor: .windowBackgroundColor))
         .environment(\.layoutDirection, .rightToLeft)
         .onReceive(NotificationCenter.default.publisher(for: .init("MacToolsOpenTool"))) { n in
-            tool = (n.object as? String).flatMap(Tool.init(rawValue:))
+            guard let raw = n.object as? String else { return }
+            withAnimation(.snappy) {
+                if raw == "home" { tool = nil; tab = .home }
+                else if raw == "tools" { tool = nil; tab = .tools }
+                else { tool = Tool(rawValue: raw) }
+            }
         }
     }
 }
 
 struct HomeView: View {
     var open: (Tool) -> Void
-    @State private var free: Int64 = 0
-    @State private var total: Int64 = 1
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header with live disk usage
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "wrench.and.screwdriver.fill").font(.title2).foregroundStyle(.tint)
-                    Text("MacTools").font(.title2.bold())
-                    Spacer()
-                    Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
-                        .buttonStyle(.borderless).help("خروج")
-                }
-                let used = Double(total - free) / Double(total)
-                ProgressView(value: used).tint(used > 0.9 ? .red : used > 0.75 ? .orange : .green)
-                Text("فاضي \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) من \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(16)
-            .background(.ultraThinMaterial)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(sections, id: \.0) { name, tools in
-                        Text(name).font(.subheadline.bold()).foregroundStyle(.secondary)
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                            ForEach(tools) { t in HomeTile(tool: t) { open(t) } }
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(sections, id: \.0) { name, tools in
+                    Text(name).font(.subheadline.bold()).foregroundStyle(.secondary)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                        ForEach(tools) { t in HomeTile(tool: t) { open(t) } }
                     }
                 }
-                .padding(16)
             }
+            .padding(16)
         }
-        .onAppear(perform: readDisk)
-    }
-
-    func readDisk() {
-        let v = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey])
-        free = v?.volumeAvailableCapacityForImportantUsage ?? 0
-        total = Int64(v?.volumeTotalCapacity ?? 1)
+        .scrollContentBackground(.hidden)
     }
 }
 
@@ -290,6 +280,7 @@ struct CleanView: View {
         }
         if brew { await shAsync("brew cleanup -s --prune=all") }
         let freed = max(await freeKB() - before, 0)
+        ActivityStats.shared.recordFreed(kb: freed)
         withAnimation { result = "اتوفر \(human(kb: freed))" }
         notify("تم التنظيف", "اتوفر \(human(kb: freed))")
         working = false
@@ -347,6 +338,7 @@ final class Downloader: ObservableObject {
                     self.progress = 1
                     self.status = "خلص ✓"
                     withAnimation { self.history.insert(.init(path: file), at: 0) }
+                    ActivityStats.shared.recordDownload()
                     notify("خلص التحميل ✅", (file as NSString).lastPathComponent)
                 } else if proc.terminationReason == .uncaughtSignal {
                     self.status = "اتلغى"
@@ -452,6 +444,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         ClipboardStore.shared.start()
+        _ = DashboardModel.shared
+        ReclaimStore.shared.start()
 
         popover.behavior = .transient
         popover.delegate = self
@@ -471,7 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         KeepAwake.shared.$isOn.receive(on: RunLoop.main).sink { [weak self] on in self?.setIcon(awake: on) }.store(in: &bag)
         NotificationCenter.default.publisher(for: .init("MacToolsClosePopover"))
             .receive(on: RunLoop.main).sink { [weak self] _ in self?.popover.performClose(nil) }.store(in: &bag)
-        // Debug: `--snapshot <tool|home> <out.png>` renders the panel offscreen and quits.
+        // Debug: `--snapshot <tool|home|tools> <out.png>` renders the panel offscreen and quits.
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--snapshot"), i + 2 < a.count { snapshot(tool: a[i + 1], to: a[i + 2]) }
         // Debug: `--popover <out.png>` opens the real popover, captures its window, prints frames.
@@ -492,15 +486,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let win = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 420, height: 540), styleMask: .borderless, backing: .buffered, defer: false)
         win.contentViewController = popover.contentViewController
         win.backgroundColor = .windowBackgroundColor
+        win.appearance = NSApp.effectiveAppearance
         win.level = .floating
+        win.contentView?.appearance = NSApp.effectiveAppearance
         win.orderFrontRegardless()
+        NotificationCenter.default.post(name: .init("MacToolsPopoverDidShow"), object: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             NotificationCenter.default.post(name: .init("MacToolsOpenTool"), object: tool)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            sh("screencapture -x -o -l \(win.windowNumber) \(q(path))")
+            let shot = sh("screencapture -x -o -l \(win.windowNumber) \(q(path))")
+            // screencapture exits 133 without Screen Recording permission; draw the view then.
+            if shot.code != 0 { self.renderSnapshot(win, to: path) }
             NSApp.terminate(nil)
         }
+    }
+
+    /// screencapture needs Screen Recording permission; draw the window layer when it can't.
+    func renderSnapshot(_ win: NSWindow, to path: String) {
+        guard let view = win.contentView else { return }
+        view.layoutSubtreeIfNeeded()
+        win.displayIfNeeded()
+        let scale = max(win.backingScaleFactor, 1)
+        let bounds = view.bounds
+        let wide = max(1, Int((bounds.width * scale).rounded()))
+        let high = max(1, Int((bounds.height * scale).rounded()))
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: wide, pixelsHigh: high,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return }
+        rep.size = bounds.size
+        guard let gfx = NSGraphicsContext(bitmapImageRep: rep) else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = gfx
+        (win.backgroundColor ?? .windowBackgroundColor).setFill()
+        NSBezierPath(rect: bounds).fill()
+        gfx.cgContext.saveGState()
+        gfx.cgContext.translateBy(x: 0, y: CGFloat(high))
+        gfx.cgContext.scaleBy(x: scale, y: -scale)
+        view.layer?.render(in: gfx.cgContext)
+        gfx.cgContext.restoreGState()
+        NSGraphicsContext.restoreGraphicsState()
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        try? data.write(to: URL(fileURLWithPath: path))
     }
 
     func setIcon(awake: Bool) {
@@ -533,9 +562,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             popover.show(relativeTo: w.contentView!.bounds, of: w.contentView!, preferredEdge: .minY)
         }
         popover.contentViewController?.view.window?.makeKey()
+        NotificationCenter.default.post(name: .init("MacToolsPopoverDidShow"), object: nil)
     }
 
-    func popoverDidClose(_ n: Notification) { anchor?.close(); anchor = nil }
+    func popoverDidClose(_ n: Notification) {
+        anchor?.close(); anchor = nil
+        NotificationCenter.default.post(name: .init("MacToolsPopoverDidClose"), object: nil)
+    }
 }
 
 MainActor.assumeIsolated {

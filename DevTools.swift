@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Ports
 
-private struct PortItem: Identifiable, Hashable {
+struct PortItem: Identifiable, Hashable {
     let name: String
     let pid: Int
     let port: Int
@@ -18,6 +18,23 @@ private struct PortItem: Identifiable, Hashable {
         default: return nil
         }
     }
+}
+
+/// Listening TCP ports from `lsof`. Shared by the ports tool and the dashboard.
+func listeningPorts() async -> [PortItem] {
+    let out = await shAsync("lsof -nP -iTCP -sTCP:LISTEN").out
+    var seen = Set<String>()
+    var list: [PortItem] = []
+    for line in out.split(separator: "\n").dropFirst() {
+        let f = line.split(separator: " ", omittingEmptySubsequences: true)
+        guard f.count >= 9, let pid = Int(f[1]) else { continue }
+        // NAME is the field before "(LISTEN)"
+        let nameIdx = f.last == "(LISTEN)" ? f.count - 2 : f.count - 1
+        guard let port = Int(f[nameIdx].split(separator: ":").last ?? "") else { continue }
+        let item = PortItem(name: String(f[0]).replacingOccurrences(of: "\\x20", with: " "), pid: pid, port: port)
+        if seen.insert(item.id).inserted { list.append(item) }
+    }
+    return list.sorted { $0.port < $1.port }
 }
 
 struct PortsView: View {
@@ -70,19 +87,8 @@ struct PortsView: View {
 
     private func refresh() async {
         loading = true
-        let out = await shAsync("lsof -nP -iTCP -sTCP:LISTEN").out
-        var seen = Set<String>()
-        var list: [PortItem] = []
-        for line in out.split(separator: "\n").dropFirst() {
-            let f = line.split(separator: " ", omittingEmptySubsequences: true)
-            guard f.count >= 9, let pid = Int(f[1]) else { continue }
-            // NAME is the field before "(LISTEN)"
-            let nameIdx = f.last == "(LISTEN)" ? f.count - 2 : f.count - 1
-            guard let port = Int(f[nameIdx].split(separator: ":").last ?? "") else { continue }
-            let item = PortItem(name: String(f[0]).replacingOccurrences(of: "\\x20", with: " "), pid: pid, port: port)
-            if seen.insert(item.id).inserted { list.append(item) }
-        }
-        withAnimation { items = list.sorted { $0.port < $1.port } }
+        let list = await listeningPorts()
+        withAnimation { items = list }
         loading = false
     }
 
@@ -191,6 +197,7 @@ struct NodeModulesView: View {
         deleting = false
         withAnimation { selected = [] }
         await scan()
+        ActivityStats.shared.recordFreed(kb: freed)
         notify("DevTools", "اتحرر \(human(kb: freed))")
     }
 }
@@ -296,6 +303,7 @@ struct SimulatorCleanView: View {
         }
         await measure()
         let freed = max(0, before - sizes.values.reduce(0, +))
+        ActivityStats.shared.recordFreed(kb: freed)
         withAnimation { freedText = "اتحرر \(human(kb: freed))" }
         working = false
     }
