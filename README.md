@@ -1,39 +1,37 @@
 # MacTools 🔧
 
-تطبيق صغير لشريط القوائم في الماك (menu bar) فيه 12 أداة مفيدة، بواجهة عربية.
+A tiny macOS menu-bar app with 12 handy tools. Native Swift/SwiftUI, no dependencies. (The app's interface is in Arabic.)
 
-A tiny macOS menu-bar app with 12 handy tools (Arabic UI). Native Swift/SwiftUI, no dependencies.
-
-## الأدوات / Tools
+## Tools
 
 | | |
 |---|---|
-| 🧹 **تنظيف المساحة** — كاش، لوج، سلة المهملات، DerivedData، npm/Yarn، brew cleanup | ⬇️ **تحميل فيديو / صوت** — يوتيوب، تيك توك، إنستجرام، فيسبوك، X (عبر yt-dlp) |
-| 🔤 **نص من الشاشة** — OCR عربي وإنجليزي بدون إنترنت | 🌐 **البورتات** — اعرض البورتات المفتوحة واقفلها (Metro / Expo / Vite) |
-| 📦 **صياد node_modules** — دوّر في `~/projects` وامسح node_modules و Pods | 📱 **تنظيف Simulator** — simulators قديمة، DeviceSupport، كاش |
-| ☕ **منع النوم** — caffeinate بمؤقت | 📋 **سجل الحافظة** — آخر 30 حاجة نسختها |
-| 📶 **الشبكة** — IP محلي وعام واختبار سرعة | 🔳 **QR Code** — من الحافظة لصورة |
-| 🎛️ **مفاتيح سريعة** — الوضع الداكن، أيقونات الديسكتوب، الملفات المخفية، إخراج الهاردات، قفل الشاشة | 🔑 **مولّد باسوردات** |
+| 🧹 **Disk cleanup**: app caches, logs, Trash, Xcode DerivedData, npm/Yarn caches, `brew cleanup` | ⬇️ **Video / audio downloader**: YouTube, TikTok, Instagram, Facebook, X and more (via yt-dlp) |
+| 🔤 **Text from screen**: offline OCR for Arabic and English | 🌐 **Ports**: list listening ports and kill them (Metro, Expo, Vite tagged) |
+| 📦 **node_modules hunter**: find and delete `node_modules` and `Pods` under `~/projects` | 📱 **Simulator cleanup**: unavailable simulators, iOS DeviceSupport, caches |
+| ☕ **Keep awake**: `caffeinate` with a timer | 📋 **Clipboard history**: last 30 copied items |
+| 📶 **Network**: local and public IP, speed test | 🔳 **QR code**: turn clipboard text into a QR image |
+| 🎛️ **Quick toggles**: dark mode, desktop icons, hidden files, eject disks, lock screen | 🔑 **Password generator** |
 
-## التثبيت / Install
+## Install
 
-1. نزّل `MacTools.zip` من [Releases](../../releases/latest) وفكّه، وانقل `MacTools.app` لفولدر Applications.
-2. التطبيق مش موقّع من Apple، فأول مرة: **كليك يمين ← Open ← Open**.
-   أو من التيرمنال:
+1. Download `MacTools.zip` from [Releases](../../releases/latest), unzip it, and move `MacTools.app` to Applications.
+2. The app isn't notarized by Apple, so the first time: **right-click → Open → Open**.
+   Or from Terminal:
    ```bash
    xattr -dr com.apple.quarantine /Applications/MacTools.app
    ```
-3. لأداة التحميل محتاج [Homebrew](https://brew.sh) و:
+3. The downloader needs [Homebrew](https://brew.sh) and:
    ```bash
    brew install yt-dlp ffmpeg
    ```
 
-يشتغل على macOS 14 أو أحدث (Apple Silicon و Intel).
+Requires macOS 14 or later (Apple Silicon and Intel).
 
-**ملاحظات:**
-- عشان التنظيف يشوف سلة المهملات: System Settings ← Privacy & Security ← Full Disk Access ← ضيف MacTools.
-- عشان يفتح مع تشغيل الماك: System Settings ← General ← Login Items.
-- المسح في أداة التنظيف نهائي (مش بيروح سلة المهملات).
+**Notes**
+- To let the cleaner see the Trash: System Settings → Privacy & Security → Full Disk Access → add MacTools.
+- To start it at login: System Settings → General → Login Items.
+- Cleanup deletes files permanently (they don't go to the Trash).
 
 ## Build from source
 
